@@ -1,4 +1,4 @@
-# participation-tools-docs
+# Participation Tools Documents
 A repository of documents and artefacts containing information about Mojaloop participation tools.
 
 # Slack Channel
