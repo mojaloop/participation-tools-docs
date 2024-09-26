@@ -1,0 +1,89 @@
+@startuml PayerDFSPSingleIntegrationApiPattern
+/'*****
+--------------
+******'/
+
+skinparam participant { 
+  FontColor white
+}
+  participant "Core Banking Solution" as CBS #DarkGreen
+box "   Payer DFSP\nPayment Manger" #LightSteelBlue
+  participant "Core Connector" as CC  #DarkBlue
+  participant "Mojaloop Connector" as MC #DarkKhaki
+end box
+participant "Mojaloop" as Switch #DarkRed
+
+autonumber 1 1 "<b>[0]"
+
+
+CBS->CBS: Reserve funds
+note left
+  Reserve funds in Payer Account
+end note
+CBS->CC: **POST** /sendMoney 
+note left
+  If not already supported by CBS, 
+  this API to be defined by System Integrator.
+    - need a reference to the transfer 
+    - and concent from payer
+end note
+activate CC #DarkBlue
+CC->MC: **POST** /transfers \n(AUTO_ACCEPT_PARTY = true,\n AUTO_ACCEPT_QUOTES = false)
+MC->Switch: **GET** /parties/{Type}/{ID}/{SubId}
+Switch->Switch: Determine Payee DFSP using oracle
+Switch->Switch: Lookup Payee Information from Payee DFSP using **GET** /parties
+Switch->MC: **PUT** /parties/{Type}/{ID}/{SubId}
+rnote left MC
+  Accept Party
+  Need Currency Conversion
+endrnote
+MC->>Switch: **POST** /fxquotes
+Switch->Switch: Pass on quote to FXP using **POST** /fxquotes
+Switch->>MC: **PUT** /fxquotes/{Id}
+MC-->CC: **Response:** Do you accept this rate? \n It expires in 5 minutes
+CC->CC: Check that the conversion rate \nand terms are acceptable
+note left
+  **Validate:**
+   --> transfer amount and currency
+   --> conversion rate
+   --> FXP
+end note  
+CC->MC: **PUT** /transfers {"acceptConverion": **true**}
+MC->Switch: **POST** /quotes
+Switch->Switch: Pass on quote to Payee DFSP using **POST** /quotes
+Switch->MC: **PUT** /quotes/{Id}
+MC-->CC: response
+CC-->CC: Check that the terms of the \n transfer align with expectations
+note left
+**Validate:**
+ --> transfer amount and currency
+ --> fees 
+ --> payee DFSP
+end note
+CC->MC: **PUT** /transfers {"acceptQuote": true}
+MC->Switch: **POST** /fxtransfers 
+Switch->Switch: Reserve Payer DFSP funds
+Switch->Switch: Pass on transfer to FXP using **POST** /fxtransfers
+Switch->MC: **PUT** /fxtransfers/{Id}
+
+MC->Switch: **POST** /transfers 
+Switch->Switch: Reserve FPX target currency
+Switch->Switch: Pass on transfer to Payee DFSP using **POST** /transfers
+Switch->Switch: Commit Payer DFSP, FPX and Payee DFSP funds
+Switch->MC: **PUT** /transfers/{Id}
+MC-->CC: response
+CC-->CBS: response
+deactivate CC
+alt if (transferStatus== 'COMMITTED')
+CBS->CBS: Finalise transfer
+note left
+   Finalise transfer in Payer account
+end note
+else else
+CBS->CBS: Rollback transfer
+note left
+   Rollback transfer in Payer account
+end note
+end 
+
+@enduml

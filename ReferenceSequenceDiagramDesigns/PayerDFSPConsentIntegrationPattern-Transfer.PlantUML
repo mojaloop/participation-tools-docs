@@ -1,0 +1,69 @@
+@startuml PayerDFSPConsentIntegrationPattern-Transfer
+
+/'*****
+--------------
+******'/
+
+skinparam participant { 
+  FontColor white
+}
+  participant "Core Banking Solution" as CBS #DarkGreen
+box "   Payer DFSP\nPayment Manger" #LightSteelBlue
+  participant "Core Connector" as CC  #DarkBlue
+  participant "Mojaloop Connector" as MC #DarkKhaki
+end box
+participant "Mojaloop" as Switch #DarkRed
+
+autonumber 1 1 "<b>[0]"
+
+CBS->CBS: Obtain consent from Payer\n on Fees and Payee Info
+note left
+  Obtain Payer consent 
+  on fees and Payee info
+end note
+CBS->CC: **PUT** /sendmoney/{transferId}
+note left
+  If not already supported by CBS, 
+  this API to be defined by System Integrator.
+    - need a reference to the transfer 
+    - and consent from payer
+end note
+activate CC #DarkBlue
+
+CC->CBS: Reserve funds
+note left
+  Reserve funds in Payer account
+end note
+
+CC->MC: **PUT** /transfers
+
+MC->Switch: **POST** /fxtransfers 
+Switch-->MC: HTTP 202 response
+Switch->Switch: Reserve Payer DFSP \nfunds in source currency
+Switch->Switch: Pass on transfer to \nFXP using \n**POST** /fxtransfers
+Switch->MC: **PUT** /fxtransfers/{Id}
+MC-->Switch: HTTP 200 Response
+
+MC->Switch: **POST** /transfers 
+Switch-->MC: HTTP 202 response
+Switch->Switch: Reserve FPX funds \nin target currency
+Switch->Switch: Pass on transfer to \nPayee DFSP using\n **POST** /transfers
+Switch->Switch: Commit Payer DFSP, \nFPX and Payee DFSP funds
+Switch->MC: **PUT** /transfers/{Id}
+MC-->Switch: HTTP 200 Response
+
+MC-->CC: response
+alt if (transferStatus== 'COMMITTED')
+CC->CBS: Finalise transfer
+note left
+  Finalise transfer in Payer account
+end note
+else else
+CC->CBS: Rollback transfer
+note left
+  Rollback transfer in Payer account
+end note
+end 
+CC-->CBS: response
+deactivate CC
+@enduml

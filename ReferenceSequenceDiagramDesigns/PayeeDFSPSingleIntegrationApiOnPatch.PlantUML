@@ -1,0 +1,70 @@
+@startuml PayeeDFSPSingleIntegrationApiOnPatchPattern
+/'*****
+--------------
+******'/
+
+skinparam participant { 
+  FontColor white
+}
+participant "Mojaloop" as Switch #DarkRed
+box "   Payee DFSP\nPayment Manger" #LightSteelBlue
+  participant "Mojaloop Connector" as MC #DarkKhaki
+  participant "Core Connector" as CC  #DarkBlue
+end box
+  participant "Core Banking Solution" as CBS #DarkGreen
+
+autonumber 1 1 "<b>[0]"
+
+Switch->Switch: Pass Quote to Payer
+note left
+Obtain consent to 
+proceed with the transfer
+Via **POST** /transfers
+end note
+    Switch-> Switch: Perform liquidity(NDC)check
+    Switch->Switch: Reserve Funds
+    Switch->MC: **POST** /transfers
+    MC->CC: **POST** /transfers 
+    activate CC #DarkBlue
+    CC->CC: Validate Quote
+    CC-->MC: response
+    deactivate CC
+    MC->MC: Generate Fulfilment
+    MC-->Switch: **PUT** /transfers/{id} \n(TransferStatus='RESERVED', fulfullment)
+    Switch-->Switch: Commit funds in DFSP ledgers
+
+    Switch->MC: **PATCH** /transfers/{id} \n(TransferStatus='COMMITTED')
+    MC->CC: Commit Transfer\n **PATCH** /transfers/{id} \n(TransferStatus='COMMITTED') 
+    activate CC #DarkBlue
+    CC->CBS: Perform AML checks \nand transfer funds
+    note right 
+    Replace with CBS API
+    to transfer funds
+    end note
+    alt if (AML checks pass)
+    CBS->CBS: Release funds to Payee 
+    CBS-->CC: response
+    CC-->MC: response
+    else if (AML checks fail)
+    CBS->CBS: Compensation action for AML failure. \n Return error response.
+    CBS-->CC: response
+    CC-->MC: response
+    rnote left MC 
+    Payee DFSP AML error checks (and other errors) result in:
+    
+    **Reconciliation Error**
+       Payer has sent funds
+       Payer DFSP has sent funds
+       Hub considers that the Payee DFSP has received funds
+       Payee DFSP has rejected the transaction
+       Payee has not received funds
+    endrnote
+
+    CC->MC: Innitiate Compensation Action
+    note right
+    Refund Transfer
+    end note
+    deactivate CC
+  end
+
+@enduml

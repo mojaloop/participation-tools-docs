@@ -1,0 +1,60 @@
+@startuml FXPIntegrationPattern-Conversion
+/'*****
+--------------
+******'/
+
+' declare title
+' title FXPIntegrationPattern-Conversion
+' declare actors
+skinparam participant {
+  FontColor white
+}
+participant "Mojaloop" as Switch #DarkRed
+box "Foreign Exchange Provider\n        Payment Manger" #LightSteelBlue
+  participant "Mojaloop Connector" as MC #DarkKhaki
+  participant "Core Connector" as CC  #DarkBlue
+end box
+participant "Core Banking Solution" as CBS #DarkGreen
+
+autonumber 1 1 "<b>[0]"
+
+
+Switch->>MC: **POST** /fxTransfer
+MC-->>Switch: HTTP 202 Response
+MC->CC: **POST** /fxTransfer
+activate CC #DarkBlue
+CC->CC: Validate associated fxQuote
+CC->CBS: Reserve funds for conversion \nat quoted rate
+CBS-->CC: Response 
+CC->CC: Configure terms and\n expiry time for quote
+CC-->MC: Response
+deactivate CC
+alt If Success response
+MC->>Switch: **PUT** /fxTransfer
+Switch-->>MC: HTTP 200 OK
+
+note right
+  ILP fullfillment 
+  created by FXP
+end note
+Switch->>MC: **PATCH** /fxTransfer/{ID}
+MC-->>Switch: HTTP 200 OK
+MC->CC: **PUT** /fxTransfer/{ID}
+activate CC #DarkBlue
+alt If State is Committed
+CC->CBS: Commit funds for conversion 
+CBS-->CC: Response 
+else If State is Aborted
+CC->CBS: Rollback funds for conversion
+CBS-->CC: Response 
+end
+CC-->MC: Response
+deactivate CC
+
+else if Error response
+MC->>Switch: **PUT** /fxTransfer/error
+Switch-->>MC: HTTP 200 OK
+end
+
+
+@enduml

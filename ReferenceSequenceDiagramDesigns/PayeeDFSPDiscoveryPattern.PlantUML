@@ -1,0 +1,51 @@
+@startuml PayeeDFSPDiscoveryPattern
+/'*****
+--------------
+******'/
+
+' declare title
+' title PayeeDFSPDiscoveryPattern
+' declare actors
+skinparam participant {
+  FontColor white
+}
+participant "Mojaloop" as Switch #DarkRed
+box "   Payee DFSP\nPayment Manger" #LightSteelBlue
+  participant "Mojaloop Connector" as MC #DarkKhaki
+  participant "Core Connector" as CC  #DarkBlue
+end box
+participant "Core Banking Solution" as CBS #DarkGreen
+
+autonumber 1 1 "<b>[0]"
+
+
+Switch->>MC: **GET** /parties/{Type}/{Id}
+MC-->>Switch: HTTP 202 Response
+MC->CC: **GET** /parties/{Type}/{Id}
+activate CC #DarkBlue
+CC->CC: Validate Identifier
+CC->CC: Extract account reference
+CC->CBS: **GET** [account lookup]
+note right 
+  Replace with CBS API
+  to validate payee account
+end note
+CBS-->CC: Response
+CC->CC: Validate account and \nstatus to accept payments
+CC->CBS: **GET** [client information] 
+note right 
+  Replace with CBS API
+  to retrive client details for account
+end note
+CBS-->CC: Response [Payee's Name]
+CC-->MC: Response
+deactivate CC
+MC->MC: Add configured supported\n currency in response
+alt If Success response
+MC->>Switch: **PUT** /parties/{Type}/{Id} \n(or /parties/{Type}/{Id}/{SubId})
+else if Error response
+MC->>Switch: **PUT** /parties/{Type}/{Id}/error\n (or /parties/{Type}/{Id}/{SubId}/error)
+end
+
+
+@enduml

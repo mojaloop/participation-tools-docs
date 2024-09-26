@@ -1,0 +1,60 @@
+@startuml PayeeDFSPSingleIntegrationApiOnTransferPattern
+/'*****
+--------------
+******'/
+
+skinparam participant { 
+  FontColor white
+}
+participant "Mojaloop" as Switch #DarkRed
+box "   Payee DFSP\nPayment Manger" #LightSteelBlue
+  participant "Mojaloop Connector" as MC #DarkKhaki
+  participant "Core Connector" as CC  #DarkBlue
+end box
+  participant "Core Banking Solution" as CBS #DarkGreen
+
+autonumber 1 1 "<b>[0]"
+
+Switch->Switch: Pass Quote to Payer
+note left
+Obtain consent to 
+proceed with the transfer
+Via **POST** /transfers
+end note
+    Switch-> Switch: Perform liquidity(NDC)check
+    Switch->Switch: Reserve Funds
+    Switch->MC: **POST** /transfers
+    MC->CC: **POST** /transfers 
+    activate CC #DarkBlue
+    CC->CBS: Perform AML checks \nand transfer funds
+    note right 
+    Replace with CBS API
+    to transfer funds
+    end note    
+    CBS->CBS: Release of funds to Payee 
+    CBS-->CC: response **(homeTransactionId)**
+    CC-->MC: response **(homeTransactionId)**
+    deactivate CC
+    MC->MC: Generate Fulfilment
+    MC-->Switch: **PUT** /transfers/{id} \n(TransferStatus='RESERVED', fulfullment)
+    Switch->Switch: Commit funds in DFSP ledgers
+    alt if (Transfer status == 'ABORTED')
+    Switch->MC: **PATCH** /transfers/{id} \n(TransferStatus='ABORTED', homeTransactionId)
+    MC->CC: Abort Transfer\n **PATCH** /transfers/{id}\n (TransferStatus='ABORTED')     
+    activate CC #DarkBlue
+    CC->CBS: Abort Transfer
+    CBS->CBS: Compensate action for abort
+    CBS-->CC: response
+    CC-->MC: response
+    deactivate CC
+    else if (Transfer status == 'COMMITTED')
+    Switch->MC: **PATCH** /transfers/{id} \n(TransferStatus='COMMITTED', homeTransactionId)
+    MC->CC: **PATCH** /transfers/{id} \n(TransferStatus='COMMITTED') 
+    activate CC #DarkBlue
+    CC->CC: Do nothing
+    CC-->MC: response
+    deactivate CC
+    end
+
+
+@enduml

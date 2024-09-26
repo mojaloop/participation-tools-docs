@@ -1,0 +1,46 @@
+@startuml FXPIntegrationPattern-Quote
+/'*****
+--------------
+******'/
+
+' declare title
+' title FXPIntegrationPattern-Quote
+' declare actors
+skinparam participant {
+  FontColor white
+}
+participant "Mojaloop" as Switch #DarkRed
+box "Foreign Exchange Provider\n        Payment Manger" #LightSteelBlue
+  participant "Mojaloop Connector" as MC #DarkKhaki
+  participant "Core Connector" as CC  #DarkBlue
+end box
+participant "Core Banking Solution" as CBS #DarkGreen
+
+autonumber 1 1 "<b>[0]"
+
+
+Switch->>MC: **POST** /fxQuotes
+MC-->>Switch: HTTP 202 Response
+MC->CC: **POST** /fxQuotes
+activate CC #DarkBlue
+CC->CC: Validate Currency Conversion request
+CC->CC: Get Currency Conversion Rate & Fees
+CC->CBS: **GET** [fx Quote]
+CBS-->CC: Response [fx Quote]
+CC->CC: Configure terms and expiry time for quote
+CC-->MC: Response
+deactivate CC
+alt If Success response
+MC->>Switch: **PUT** /fxQuotes
+Switch-->>MC: HTTP 200 OK
+note right
+  ILP condition 
+  created by FXP
+end note
+else if Error response
+MC->>Switch: **PUT** /fxQuotes/error
+Switch-->>MC: HTTP 200 OK
+end
+
+
+@enduml
