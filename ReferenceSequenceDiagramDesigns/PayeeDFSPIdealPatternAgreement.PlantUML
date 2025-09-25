@@ -1,0 +1,63 @@
+@startuml PayeeDFSPIdealPatternAgreement
+/'*****
+--------------
+******'/
+
+' declare title
+' title PayeeDFSPIdealPatternAgreement
+' declare actors
+skinparam participant {
+  FontColor white
+}
+participant "Mojaloop" as Switch #DarkRed
+box "   Payee DFSP\nPayment Manger" #LightSteelBlue
+  participant "Mojaloop Connector" as MC #DarkKhaki
+  participant "Core Connector" as CC  #DarkBlue
+end box
+participant "Core Banking Solution" as CBS #DarkGreen
+
+autonumber 1 1 "<b>[0]"
+
+
+Switch->>MC: **POST** /quotes
+MC-->>Switch: HTTP 202 Response
+MC->CC: **POST** /quoterequest
+activate CC #DarkBlue
+CC->CC: Validate Identifier
+    CC->CC: Extract account reference
+    CC->CC: Validate account and \nstatus to accept payments
+    CC->CBS: **GET** [account lookup]
+    note right 
+    Replace with CBS API
+    to validate payee account
+    end note
+    CBS-->CC: Response
+    CC->CBS: **GET** [AML check]
+    note right 
+    If AML check can be made 
+    here then they should.
+    Validate that the account can accept 
+    the transfered amount.   
+    end note
+    CBS-->CC: Response
+    CC->CBS: **Calculate Fees**
+    note right 
+    Replace with CBS API
+        to calculate fees
+    end note
+    CBS-->CC: Response
+    CC->CC: Build the transfer terms
+
+CC-->MC: Response
+deactivate CC
+MC->>Switch: **PUT** /quotes/{Id} 
+Switch-->>MC: HTTP 200 Response
+
+Switch->Switch: Pass Quote to Payer DFSP
+note left
+Obtain consent to 
+proceed with the transfer
+Via **POST** /transfers
+end note
+
+@enduml

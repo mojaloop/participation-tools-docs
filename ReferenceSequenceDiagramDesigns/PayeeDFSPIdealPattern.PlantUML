@@ -1,0 +1,108 @@
+@startuml PayeeDFSPIdealPattern
+/'*****
+--------------
+******'/
+
+' declare title
+' title PayeeDFSPIdealPattern
+' declare actors
+skinparam participant {
+  FontColor white
+}
+participant "Mojaloop" as Switch #DarkRed
+box "   Payee DFSP\nPayment Manger" #LightSteelBlue
+  participant "Mojaloop Connector" as MC #DarkKhaki
+  participant "Core Connector" as CC  #DarkBlue
+end box
+participant "Core Banking Solution" as CBS #DarkGreen
+
+autonumber 1 1 "<b>[0]"
+
+== Discovery - Payee DFSP integration ==
+
+Switch->>MC: **GET** /parties/{Type}/{Id}
+MC-->>Switch: HTTP 202 Response
+MC->CC: **GET** /parties/{Type}/{Id}
+activate CC #DarkBlue
+CC->CC: Validate Identifier
+CC->CC: Extract account reference
+CC->CBS: **GET** [account lookup]
+note right 
+  Replace with CBS API
+  to validate payee account
+end note
+CBS-->CC: Response
+CC->CC: Validate account and \nstatus to accept payments
+CC->CBS: **GET** [client information] 
+note right 
+  Replace with CBS API
+  to retrive client details for account
+end note
+CBS-->CC: Response [Payee's Name]
+CC-->MC: Response
+deactivate CC
+alt If Success response
+MC->>Switch: **PUT** /parties/{Type}/{Id} \n(or /parties/{Type}/{Id}/{SubId})
+else if Error response
+MC->>Switch: **PUT** /parties/{Type}/{Id}/error\n (or /parties/{Type}/{Id}/{SubId}/error)
+end
+
+== Payee DFSP integration - Quote and Transfer - 2 phase commit with prior AML check ==
+
+Switch->>MC: **POST** /quotes
+MC-->>Switch: HTTP 202 Response
+MC->CC: **POST** /quoterequest
+activate CC #DarkBlue
+CC->CBS: **AML** checks (velocity,etc...)
+note right 
+  Replace with CBS API
+  Validate that the account can accept 
+  the transfered amount
+end note
+CBS-->CC: Response
+CC->CBS: **Calculate Fees**
+note right 
+  Replace with CBS API
+    to calculate fees
+end note
+CBS-->CC: Response
+CC-->MC: Response
+deactivate CC
+MC-->>Switch: **PUT** /quotes/{Id} 
+Switch->Switch: Pass Quote to Payer DFSP
+note left
+Obtain consent to 
+proceed with the transfer
+Via **POST** /transfers
+end note
+    Switch-> Switch: Perform liquidity(NDC)check
+    Switch->Switch: Reserve Funds
+    Switch->MC: **POST** /transfers
+    MC->CC: Create & Reserve Transfer\n **POST** /transfers 
+    activate CC #DarkBlue
+    CC->CBS: Reserve funds 
+note right 
+  Replace with CBS API
+  to reserve funds transfer funds
+end note
+    CBS-->CC: response (homeTransactionId)
+    CC-->MC: response (homeTransactionId)
+    deactivate CC
+    MC->MC: Generate Fulfilment
+    MC->Switch: **PUT** /transfers/{id}\n (TransferStatus='RESERVED', fulfullment)
+    Switch->Switch: Commit funds in DFSP ledgers
+    Switch->MC: **PATCH** /transfers/{id} \n(TransferStatus='COMMITTED')
+    MC->CC: Commit Transfer\n **PATCH** /transfers/{id} \n(TransferStatus='COMMITTED',\n homeTransactionId) 
+    activate CC #DarkBlue
+    CC->CBS: Commit funds 
+note right 
+  Replace with CBS API
+    to commit funds transfer funds
+    to Payee account
+end note
+    CBS->CBS: Release funds to Payee 
+    CBS-->CC: response
+    CC-->MC: response
+    deactivate CC
+
+@enduml

@@ -1,0 +1,72 @@
+@startuml PayerDFSPConsentIntegrationPattern-Consent
+/'*****
+--------------
+******'/
+
+skinparam participant { 
+  FontColor white
+}
+  participant "Core Banking Solution" as CBS #DarkGreen
+box "   Payer DFSP\nPayment Manger" #LightSteelBlue
+  participant "Core Connector" as CC  #DarkBlue
+  participant "Mojaloop Connector" as MC #DarkKhaki
+end box
+participant "Mojaloop" as Switch #DarkRed
+
+autonumber 1 1 "<b>[0]"
+
+note left CC
+  If not already supported by CBS, 
+  this API to be defined by System Integrator.
+    - include Scheme data requirements
+    - align with Comesa use case    
+end note
+CBS->CC: **POST** /sendMoney 
+activate CC #DarkBlue
+CC->MC: **POST** /transfers \n(AUTO_ACCEPT_PARTY = **true**, \nAUTO_ACCEPT_QUOTES = **false**)
+MC->>Switch: **GET** /parties/{Type}/{ID}/{SubId}
+Switch-->>MC: HTTP 202 response
+Switch->Switch: Determine Payee DFSP\n using oracle
+Switch->Switch: Lookup Payee Information\n from Payee DFSP\n using **GET** /parties
+Switch->>MC: **PUT** /parties/{Type}/{ID}/{SubId}
+MC-->>Switch: HTTP 200 Response
+rnote left MC
+  Accept Party
+  Need Currency Conversion
+endrnote
+MC->>Switch: **POST** /fxquotes
+Switch-->>MC: HTTP 202 response
+Switch->Switch: Pass on quote to FXP\n using **POST** /fxquotes
+Switch->>MC: **PUT** /fxquotes/{Id}
+MC-->>Switch: HTTP 200 Response
+MC-->CC: Response \nDo you accept this rate? \n It expires in 5 minutes
+CC->CC: Check that the conversion rate \nand terms are acceptable
+note left
+  **Validate:**
+   --> transfer amount and currency
+   --> conversion rate
+   --> FXP
+end note  
+CC->MC: **PUT** /transfers {"acceptConverion": **true**}
+MC->>Switch: **POST** /quotes
+Switch-->>MC: HTTP 202 response
+Switch->Switch: Pass on quote to \nPayee DFSP using \n**POST** /quotes
+Switch->>MC: **PUT** /quotes/{Id}
+MC-->>Switch: HTTP 200 Response
+MC-->CC: Response
+CC-->CC: Check that the terms of the \n transfer align with expectations
+note left
+**Validate:**
+ --> transfer amount and currency
+ --> fees 
+ --> payee DFSP
+end note
+CC-->CBS: Response
+deactivate CC
+CBS->CBS: Obtain consent from Payer on\n Fees and Payee Info
+note left
+  Obtain Payer consent 
+  on fees and Payee info
+end note
+
+@enduml

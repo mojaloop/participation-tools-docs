@@ -1,0 +1,61 @@
+@startuml PayeeDFSPIdealPatternTransfer
+/'*****
+--------------
+******'/
+
+' declare title
+' title PayeeDFSPIdealPatternTransfer
+' declare actors
+skinparam participant {
+  FontColor white
+}
+participant "Mojaloop" as Switch #DarkRed
+box "   Payee DFSP\nPayment Manger" #LightSteelBlue
+  participant "Mojaloop Connector" as MC #DarkKhaki
+  participant "Core Connector" as CC  #DarkBlue
+end box
+participant "Core Banking Solution" as CBS #DarkGreen
+
+autonumber 1 1 "<b>[0]"
+
+Switch->Switch: Pass Quote to Payer DFSP
+note left
+Obtain consent to 
+proceed with the transfer
+Via **POST** /transfers
+end note
+    Switch-> Switch: Perform liquidity(NDC)check
+    Switch->Switch: Reserve Funds
+    Switch->MC: **POST** /transfers
+    MC->CC: Create & Reserve Transfer\n **POST** /transfers 
+    activate CC #DarkBlue
+    CC->CBS: Reserve float funds 
+note right 
+  Replace with CBS API
+  to reserve funds 
+  in the float account 
+  from which the funds 
+  will be moved to the 
+  Payees account
+end note
+    CBS-->CC: response (homeTransactionId)
+    CC-->MC: response (homeTransactionId)
+    deactivate CC
+    MC->MC: Generate Fulfilment
+    MC->Switch: **PUT** /transfers/{id}\n (TransferStatus='RESERVED', fulfullment)
+    Switch->Switch: Commit funds in DFSP ledgers
+    Switch->MC: **PATCH** /transfers/{id} \n(TransferStatus='COMMITTED')
+    MC->CC: Commit Transfer\n **PATCH** /transfers/{id} \n(TransferStatus='COMMITTED',\n homeTransactionId) 
+    activate CC #DarkBlue
+    CC->CBS: Commit funds 
+note right 
+  Replace with CBS API
+    to commit funds transfer funds
+    to Payee account
+end note
+    CBS->CBS: Release funds to Payee 
+    CBS-->CC: response
+    CC-->MC: response
+    deactivate CC
+
+@enduml
